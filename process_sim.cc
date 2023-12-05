@@ -1,5 +1,6 @@
 #include <cctype>     // for toupper()
 #include <cstdlib>    // for EXIT_SUCCESS and EXIT_FAILURE
+#include <string>
 #include <cstring>    // for strerror()
 #include <cerrno>     // for errno
 #include <deque>      // for deque (used for ready and blocked queues)
@@ -35,7 +36,8 @@ enum State
 {
     STATE_READY,
     STATE_RUNNING,
-    STATE_BLOCKED
+    STATE_BLOCKED,
+    STATE_TERMINATED
 };
 
 class PcbEntry
@@ -52,7 +54,8 @@ public:
     unsigned int timeUsed;
 };
 
-PcbEntry pcbEntry[10];
+PcbEntry PcbTable[10];
+unsigned int pcbEntries = 0;
 unsigned int timestamp = 0;
 Cpu cpu;
 
@@ -70,8 +73,8 @@ double cumulativeTimeDiff = 0;
 int numTerminatedProcesses = 0;
 
 string trim(const string& str) {
-    size_t first = str.find_first_not_of(' ');
-    size_t last = str.find_last_not_of(' ');
+    size_t first = str.find_first_not_of(" \t\n\r\f\v");
+    size_t last = str.find_last_not_of(" \t\n\r\f\v");
     return str.substr(first, (last - first + 1));
 }
 
@@ -80,6 +83,7 @@ bool createProgram(const string &filename, vector<Instruction> &program)
     ifstream file;
     int lineNum = 0;
     file.open(filename.c_str());
+
     if (!file.is_open())
     {
         cout << "Error opening file " << filename << endl;
@@ -128,7 +132,8 @@ bool createProgram(const string &filename, vector<Instruction> &program)
                     break;
                 default:
                     cout << filename << ":" << lineNum << " - Invalid operation, " << instruction.operation << endl;                file.close();
-                return false;
+                    file.close();
+                    return false;
             }
             program.push_back(instruction);
         }
@@ -177,21 +182,21 @@ void schedule()
     if(!readyState.empty()) {
         runningState = readyState.front();
         readyState.pop_front();
-        pcbEntry[runningState].state = STATE_RUNNING;
+        PcbTable[runningState].state = STATE_RUNNING;
 
         int timeSlice;
-        if(pcbEntry[runningState].priority == 0)
+        if(PcbTable[runningState].priority == 0)
             timeSlice = 1;
-        else if(pcbEntry[runningState].priority == 1)
+        else if(PcbTable[runningState].priority == 1)
             timeSlice = 2;
-        else if(pcbEntry[runningState].priority == 2)
+        else if(PcbTable[runningState].priority == 2)
             timeSlice = 4;
-        else if(pcbEntry[runningState].priority == 3)
+        else if(PcbTable[runningState].priority == 3)
             timeSlice = 8;
-        cpu.pProgram = &(pcbEntry[runningState].program);
-        cpu.programCounter = pcbEntry[runningState].programCounter;
-        cpu.value = pcbEntry[runningState].value;
-        cpu.timeSliceUsed = pcbEntry[runningState].timeUsed; //not sure if i should be updated the CPU time slice here
+        cpu.pProgram = &(PcbTable[runningState].program);
+        cpu.programCounter = PcbTable[runningState].programCounter;
+        cpu.value = PcbTable[runningState].value;
+        cpu.timeSliceUsed = PcbTable[runningState].timeUsed; //not sure if i should be updated the CPU time slice here
         cpu.timeSlice = timeSlice;
     }
 
@@ -212,9 +217,9 @@ void block()
         return;
     }
     blockedState.push_back(runningState);
-    pcbEntry[runningState].state = STATE_BLOCKED;
-    pcbEntry[runningState].programCounter = cpu.programCounter;
-    pcbEntry[runningState].value = cpu.value;
+    PcbTable[runningState].state = STATE_BLOCKED;
+    PcbTable[runningState].programCounter = cpu.programCounter;
+    PcbTable[runningState].value = cpu.value;
     runningState = -1;
 }
 
@@ -228,7 +233,8 @@ void end()
         cout << "Error: No process is currently running." << endl;
         return;
     }
-    PcbEntry &runningProcess = pcbEntry[runningState];
+    PcbEntry &runningProcess = PcbTable[runningState];
+    PcbTable[runningState].state = STATE_TERMINATED;
 
     // 2. Update the cumulative time difference.
     cumulativeTimeDiff += timestamp + 1 - runningProcess.startTime;
@@ -243,20 +249,42 @@ void end()
 // Implements the F operation.
 void fork(int value)
 {
-    // TODO: Implement
-    // 1. Get a free PCB index (pcbTable.size())
+    // 1. Get a free PCB index
+    int freeIndex = pcbEntries;
     // 2. Get the PCB entry for the current running process.
+    PcbEntry &parentProcess = PcbTable[runningState];
     // 3. Ensure the passed-in value is not out of bounds.
+    if (value < 0 || (cpu.programCounter + value) >= parentProcess.program.size())
+    {
+        cout << "Invalid value for fork operation." << endl;
+        return;
+    }
     // 4. Populate the PCB entry obtained in #1
+    PcbEntry newProcess;
     // a. Set the process ID to the PCB index obtained in #1.
+    newProcess.processId = freeIndex;
     // b. Set the parent process ID to the process ID of the running process (use the running process's PCB entry to get this).
+    newProcess.parentProcessId = parentProcess.processId;
     // c. Set the program counter to the cpu program counter.
+    newProcess.programCounter = cpu.programCounter;
     // d. Set the value to the cpu value.
+    newProcess.value = cpu.value;
     // e. Set the priority to the same as the parent process's priority.
+    newProcess.priority = parentProcess.priority;
     // f. Set the state to the ready state.
+    newProcess.state = STATE_READY;
     // g. Set the start time to the current timestamp
+    newProcess.startTime = timestamp;
     // 5. Add the pcb index to the ready queue.
+    readyState.push_back(freeIndex);
     // 6. Increment the cpu's program counter by the value read in #3
+    cpu.programCounter += value;
+    
+    newProcess.program = *cpu.pProgram;
+
+    //add the new process to the PcbTable
+    PcbTable[freeIndex] = newProcess;
+    ++pcbEntries;
 }
 
 // Implements the R operation.
@@ -266,8 +294,7 @@ void replace(string &argument)
     cpu.pProgram->clear();
 
     // 2. Use createProgram() to read in the filename specified by argument into the CPU(*cpu.pProgram)
-    vector<Instruction> newProgram;
-    if (!createProgram(argument, newProgram))
+    if (!createProgram(argument, *cpu.pProgram))
     {
         // Consider what to do if createProgram fails.
         // For now, let's print an error, increment the cpu program counter, and return.
@@ -284,7 +311,7 @@ void replace(string &argument)
 void quantum()
 {
     Instruction instruction;
-    cout << "In quantum: ";
+    cout << "In quantum, ";
     if (runningState == -1)
     {
         cout << "No processes are running" << endl;
@@ -329,7 +356,7 @@ void quantum()
         break;
     case 'R':
         replace(instruction.stringArg);
-        cout << "instruction R" << endl;
+        cout << "instruction R " << instruction.stringArg << endl;
         break;
     }
     ++timestamp;
@@ -348,7 +375,7 @@ void unblock()
         int unblockedProcess = blockedState.front(); 
         blockedState.pop_front(); 
         readyState.push_back(unblockedProcess); 
-        pcbEntry[unblockedProcess].state = STATE_READY; 
+        PcbTable[unblockedProcess].state = STATE_READY; 
         schedule(); 
     } else {
         cout << "No processes to unblock." << endl;
@@ -361,17 +388,17 @@ void print()
     cout << "****************************************************************" << endl;
     cout << "The current system state is as follows:" << endl;
     cout << "****************************************************************" << endl;
-    for (int i = 0; i < sizeof(pcbEntry) / sizeof(pcbEntry[0]); ++i) // Assuming a maximum of 10 PCB entries
+    for (int i = 0; i < pcbEntries; ++i) // Assuming a maximum of 10 PCB entries
     {
-        if (pcbEntry[i].processId != -1)
+        if (PcbTable[i].processId != -1)
         {
-            cout << "Process ID: " << pcbEntry[i].processId << endl;
-            cout << "Parent Process ID: " << pcbEntry[i].parentProcessId << endl;
-            cout << "Program Counter: " << pcbEntry[i].programCounter << endl;
-            cout << "Value: " << pcbEntry[i].value << endl;
-            cout << "Priority: " << pcbEntry[i].priority << endl;
+            cout << "Process ID: " << PcbTable[i].processId << endl;
+            cout << "Parent Process ID: " << PcbTable[i].parentProcessId << endl;
+            cout << "Program Counter: " << PcbTable[i].programCounter << endl;
+            cout << "Value: " << PcbTable[i].value << endl;
+            cout << "Priority: " << PcbTable[i].priority << endl;
             cout << "State: ";
-            switch (pcbEntry[i].state)
+            switch (PcbTable[i].state)
             {
             case STATE_READY:
                 cout << "READY" << endl;
@@ -382,12 +409,15 @@ void print()
             case STATE_BLOCKED:
                 cout << "BLOCKED" << endl;
                 break;
+            case STATE_TERMINATED:
+                cout << "TERMINATED" << endl;
+                break;
             default:
                 cout << "UNKNOWN" << endl;
                 break;
             }
-            cout << "Start Time: " << pcbEntry[i].startTime << endl;
-            cout << "Time Used: " << pcbEntry[i].timeUsed << endl;
+            cout << "Start Time: " << PcbTable[i].startTime << endl;
+            cout << "Time Used: " << PcbTable[i].timeUsed << endl;
             cout << "--------------------------------------\n";
         }
     }
@@ -400,27 +430,51 @@ void print()
     cout << "-Time Slice Used: " << cpu.timeSliceUsed << endl;
 }
 
+void calcAvgTurnaroundTime()
+{
+    double totalTurnaroundTime = 0;
+
+    for (int i = 0; i < pcbEntries; ++i)
+    {
+        if (PcbTable[i].state == STATE_TERMINATED)
+        {
+            double turnaroundTime = PcbTable[i].timeUsed - PcbTable[i].startTime;
+            totalTurnaroundTime += turnaroundTime;
+        }
+    }
+
+    if (numTerminatedProcesses > 0)
+    {
+        double avgTurnaroundTime = totalTurnaroundTime / numTerminatedProcesses;
+        cout << "Average Turnaround Time: " << avgTurnaroundTime << endl;
+    }
+    else
+    {
+        cout << "No processes terminated." << endl;
+    }
+}
+
 // Function that implements the process manager.
 int runProcessManager(int fileDescriptor)
 {
-    vector<PcbEntry> pcbTable;
     //  Attempt to create the init process.
-    if (!createProgram("init", pcbEntry[0].program))
+    if (!createProgram("init", PcbTable[0].program))
     {
         return EXIT_FAILURE;
     }
-    pcbEntry[0].processId = 0;
-    pcbEntry[0].parentProcessId = -1;
-    pcbEntry[0].programCounter = 0;
-    pcbEntry[0].value = 0;
-    pcbEntry[0].priority = 0;
-    pcbEntry[0].state = STATE_RUNNING;
-    pcbEntry[0].startTime = 0;
-    pcbEntry[0].timeUsed = 0;
+    PcbTable[0].processId = 0;
+    PcbTable[0].parentProcessId = -1;
+    PcbTable[0].programCounter = 0;
+    PcbTable[0].value = 0;
+    PcbTable[0].priority = 0;
+    PcbTable[0].state = STATE_RUNNING;
+    PcbTable[0].startTime = 0;
+    PcbTable[0].timeUsed = 0;
+    pcbEntries = 1;
     runningState = 0;
-    cpu.pProgram = &(pcbEntry[0].program);
-    cpu.programCounter = pcbEntry[0].programCounter;
-    cpu.value = pcbEntry[0].value;
+    cpu.pProgram = &(PcbTable[0].program);
+    cpu.programCounter = PcbTable[0].programCounter;
+    cpu.value = PcbTable[0].value;
     timestamp = 0;
     double avgTurnaroundTime = 0;
     // Loop until a 'T' is read, then terminate.
@@ -441,6 +495,7 @@ int runProcessManager(int fileDescriptor)
             break;
         case 'U':
             cout << "You entered U" << endl;
+            unblock();
             break;
         case 'P':
             pid_t reporterPid;
@@ -462,9 +517,18 @@ int runProcessManager(int fileDescriptor)
             break;
         case 'T':
             cout << "You entered T, exiting" << endl;
+            calcAvgTurnaroundTime();
+            break;
         default:
             cout << "You entered an invalid character!" << endl;
         }
+        
+        if (runningState != -1) {
+            PcbTable[runningState].programCounter = cpu.programCounter;
+            PcbTable[runningState].value = cpu.value;
+            ++PcbTable[runningState].timeUsed;
+        }
+
     } while (ch != 'T');
     return EXIT_SUCCESS;
 }

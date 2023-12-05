@@ -1,4 +1,5 @@
-S 5
-A 10
-D 2
+S 100
+F 1
+R addthirty
+D 5
 E
