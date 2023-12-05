@@ -205,6 +205,15 @@ void block()
     // b. Store the CPU program counter in the PCB's program counter.
     // c. Store the CPU's value in the PCB's value.
     // 3. Update the running state to -1 (basically mark no process as running). Note that a new process will be chosen to run later (via the Q command code calling the schedule() function).
+    if (runningState == -1) {
+        cout << "No process is running to block." << endl;
+        return;
+    }
+    blockedState.push_back(runningState);
+    pcbEntry[runningState].state = STATE_BLOCKED;
+    pcbEntry[runningState].programCounter = cpu.programCounter;
+    pcbEntry[runningState].value = cpu.value;
+    runningState = -1;
 }
 
 // Implements the E operation.
