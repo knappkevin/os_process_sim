@@ -9,6 +9,8 @@
 #include <sys/wait.h> // for wait()
 #include <unistd.h>   // for pipe(), read(), write(), close(), fork(), and _exit()
 #include <vector>     // for vector (used for PCB table)
+#include <algorithm> // Include this for trim
+
 
 using namespace std;
 
@@ -68,6 +70,12 @@ deque<int> blockedState;
 double cumulativeTimeDiff = 0;
 int numTerminatedProcesses = 0;
 
+string trim(const string& str) {
+    size_t first = str.find_first_not_of(' ');
+    size_t last = str.find_last_not_of(' ');
+    return str.substr(first, (last - first + 1));
+}
+
 bool createProgram(const string &filename, vector<Instruction> &program)
 {
     ifstream file;
@@ -110,23 +118,16 @@ bool createProgram(const string &filename, vector<Instruction> &program)
             case 'E': // No argument.
                 break;
             case 'R': // String argument.
-                // Note that since the string is trimmed on both
-                ends, filenames
-                          // with leading or trailing whitespace (unlikely)
-                          will not work.if (instruction.stringArg.size() == 0)
+                        // Note that since the string is trimmed on both ends, filenames
+                        // with leading or trailing whitespace (unlikely) will not work.if (instruction.stringArg.size() == 0)
                 {
-                    cout << filename << ":" << lineNum << " -
-                        Missing string argument "
-                         << endl;
+                    cout << filename << ":" << lineNum << " - Missing string argument " << endl;
                     file.close();
                     return false;
                 }
                 break;
             default:
-                cout << filename << ":" << lineNum << " - Invalid
-                    operation,
-                    "
-                        << instruction.operation << endl;
+                cout << filename << ":" << lineNum << " - Invalid operation, " << instruction.operation << endl;
                 file.close();
                 return false;
             }
@@ -292,7 +293,7 @@ void print()
 // Function that implements the process manager.
 int runProcessManager(int fileDescriptor)
 {
-    // vector<PcbEntry> pcbTable;
+    vector<PcbEntry> pcbTable;
     //  Attempt to create the init process.
     if (!createProgram("init", pcbEntry[0].program))
     {
@@ -349,13 +350,16 @@ int main(int argc, char *argv[])
     int result;
     // TODO: Create a pipe
     pipe(pipeDescriptors);
-    // USE fork() SYSTEM CALL to create the child process and save the
-    value returned in processMgrPid variable if ((processMgrPid = fork()) == -1) exit(1); /* FORK FAILED */
+    // USE fork() SYSTEM CALL to create the child process and save the value returned in processMgrPid variable if ((processMgrPid = fork()) == -1) exit(1); /* FORK FAILED */
+    if ((processMgrPid = fork()) == -1) {
+        exit(1);
+    }
+
     if (processMgrPid == 0)
     {
         // The process manager process is running.
         // Close the unused write end of the pipe for the process manager
-        process.close(pipeDescriptors[1]);
+        close(pipeDescriptors[1]);
         // Run the process manager.
         result = runProcessManager(pipeDescriptors[0]);
         // Close the read end of the pipe for the process manager process (for cleanup purposes).
@@ -373,6 +377,7 @@ int main(int argc, char *argv[])
             cout << "Enter Q, P, U or T" << endl;
             cout << "$ ";
             cin >> ch;
+
             // Pass commands to the process manager process via the pipe.
             if (write(pipeDescriptors[1], &ch, sizeof(ch)) != sizeof(ch))
             {
