@@ -210,11 +210,23 @@ void block()
 // Implements the E operation.
 void end()
 {
-    // TODO: Implement
     // 1. Get the PCB entry of the running process.
-    // 2. Update the cumulative time difference (increment it by timestamp + 1 - start time of the process).
+    if (runningState == -1)
+    {
+        // error handling
+        cout << "Error: No process is currently running." << endl;
+        return;
+    }
+    PcbEntry &runningProcess = pcbEntry[runningState];
+
+    // 2. Update the cumulative time difference.
+    cumulativeTimeDiff += timestamp + 1 - runningProcess.startTime;
+
     // 3. Increment the number of terminated processes.
-    // 4. Update the running state to -1 (basically mark no process as running). Note that a new process will be chosen to run later (via the Q command code calling the schedule function).
+    numTerminatedProcesses++;
+
+    // 4. Update the running state to -1.
+    runningState = -1;
 }
 
 // Implements the F operation.
@@ -239,11 +251,22 @@ void fork(int value)
 // Implements the R operation.
 void replace(string &argument)
 {
-    // TODO: Implement
-    // 1. Clear the CPU's program (cpu.pProgram->clear()).
+    // 1. Clear the CPU's program.
+    cpu.pProgram->clear();
+
     // 2. Use createProgram() to read in the filename specified by argument into the CPU(*cpu.pProgram)
-    // a. Consider what to do if createProgram fails. I printed an error, incremented the cpu program counter and then returned.Note that createProgram can fail if the file could not be opened or did not exist.
+    vector<Instruction> newProgram;
+    if (!createProgram(argument, newProgram))
+    {
+        // Consider what to do if createProgram fails.
+        // For now, let's print an error, increment the cpu program counter, and return.
+        cout << "Error replacing program with file: " << argument << endl;
+        cpu.programCounter++;
+        return;
+    }
+
     // 3. Set the program counter to 0.
+    cpu.programCounter = 0;
 }
 
 // Implements the Q command.
