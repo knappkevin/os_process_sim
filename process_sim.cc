@@ -344,6 +344,15 @@ void unblock()
     // b. Add the process to the ready queue.
     // c. Change the state of the process to ready (update its PCB entry).
     // 2. Call the schedule() function to give an unblocked process a chance to run (if possible).
+    if (!blockedState.empty()) {
+        int unblockedProcess = blockedState.front(); 
+        blockedState.pop_front(); 
+        readyState.push_back(unblockedProcess); 
+        pcbEntry[unblockedProcess].state = STATE_READY; 
+        schedule(); 
+    } else {
+        cout << "No processes to unblock." << endl;
+    }
 }
 
 // Implements the P command.
