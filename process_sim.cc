@@ -9,8 +9,6 @@
 #include <sys/wait.h> // for wait()
 #include <unistd.h>   // for pipe(), read(), write(), close(), fork(), and _exit()
 #include <vector>     // for vector (used for PCB table)
-#include <algorithm> // Include this for trim
-
 
 using namespace std;
 
@@ -70,12 +68,6 @@ deque<int> blockedState;
 double cumulativeTimeDiff = 0;
 int numTerminatedProcesses = 0;
 
-string trim(const string& str) {
-    size_t first = str.find_first_not_of(' ');
-    size_t last = str.find_last_not_of(' ');
-    return str.substr(first, (last - first + 1));
-}
-
 bool createProgram(const string &filename, vector<Instruction> &program)
 {
     ifstream file;
@@ -99,38 +91,44 @@ bool createProgram(const string &filename, vector<Instruction> &program)
             stringstream argStream(instruction.stringArg);
             switch (instruction.operation)
             {
-                case 'S': // Integer argument.
-                case 'A': // Integer argument.
-                case 'D': // Integer argument.
-                case 'F': // Integer argument.
-                    if (!(argStream >> instruction.intArg))
-                    {
-                        cout << filename << ":" << lineNum
-                            << " - Invalid integer argument "
-                            << instruction.stringArg << " for "
-                            << instruction.operation << " operation"
-                            << endl;
-                        file.close();
-                        return false;
-                    }
-                    break;
-                case 'B': // No argument.
-                case 'E': // No argument.
-                    break;
-                case 'R': // String argument.
-                    // Note that since the string is trimmed on both ends, filenames
-                    // with leading or trailing whitespace (unlikely) will not work.
-                    if (instruction.stringArg.size() == 0)
-                    {
-                        cout << filename << ":" << lineNum << " - Missing string argument " << endl;
-                        file.close();
-                        return false;
-                    }
-                    break;
-                default:
-                    cout << filename << ":" << lineNum << " - Invalid operation, " << instruction.operation << endl;
+            case 'S': // Integer argument.
+            case 'A': // Integer argument.
+            case 'D': // Integer argument.
+            case 'F': // Integer argument.
+                if (!(argStream >> instruction.intArg))
+                {
+                    cout << filename << ":" << lineNum
+                         << " - Invalid integer argument "
+                         << instruction.stringArg << " for "
+                         << instruction.operation << " operation"
+                         << endl;
                     file.close();
                     return false;
+                }
+                break;
+            case 'B': // No argument.
+            case 'E': // No argument.
+                break;
+            case 'R': // String argument.
+                // Note that since the string is trimmed on both
+                ends, filenames
+                          // with leading or trailing whitespace (unlikely)
+                          will not work.if (instruction.stringArg.size() == 0)
+                {
+                    cout << filename << ":" << lineNum << " -
+                        Missing string argument "
+                         << endl;
+                    file.close();
+                    return false;
+                }
+                break;
+            default:
+                cout << filename << ":" << lineNum << " - Invalid
+                    operation,
+                    "
+                        << instruction.operation << endl;
+                file.close();
+                return false;
             }
             program.push_back(instruction);
         }
@@ -145,7 +143,6 @@ void set(int value)
 {
     // TODO: Implement
     // 1. Set the CPU value to the passed-in value.
-    cpu.value = value;
 }
 
 // Implements the A operation.
@@ -153,7 +150,6 @@ void add(int value)
 {
     // TODO: Implement
     // 1. Add the passed-in value to the CPU value.
-    cpu.value = cpu.value+value;
 }
 
 // Implements the D operation.
@@ -161,7 +157,6 @@ void decrement(int value)
 {
     // TODO: Implement
     // 1. Subtract the integer value from the CPU value.
-    cpu.value = cpu.value-value;
 }
 
 // Performs scheduling.
@@ -174,6 +169,30 @@ void schedule()
     // a. Mark the processing as running (update the new process's PCB state)
     // b. Update the CPU structure with the PCB entry details (program, program counter,
     // value, etc.)
+    if (runningState!=-1){
+        return;
+    }
+    if(!readyState.empty()) {
+        runningState = readyState.front();
+        readyState.pop_front();
+        pcbEntry[runningState].state = STATE_RUNNING;
+
+        int timeSlice;
+        if(pcbEntry[runningState].priority == 0)
+            timeSlice = 1;
+        else if(pcbEntry[runningState].priority == 1)
+            timeSlice = 2;
+        else if(pcbEntry[runningState].priority == 2)
+            timeSlice = 4;
+        else if(pcbEntry[runningState].priority == 3)
+            timeSlice = 8;
+        cpu.pProgram = &(pcbEntry[runningState].program);
+        cpu.programCounter = pcbEntry[runningState].programCounter;
+        cpu.value = pcbEntry[runningState].value;
+        cpu.timeSliceUsed = pcbEntry[runningState].timeUsed; //not sure if i should be updated the CPU time slice here
+        cpu.timeSlice = timeSlice;
+    }
+
 }
 
 // Implements the B operation.
@@ -291,45 +310,13 @@ void unblock()
 // Implements the P command.
 void print()
 {
-    cout << "****************************************************************" << endl;
-    cout << "The current system state is as follows:" << endl;
-    cout << "****************************************************************" << endl;
-    for (int i = 0; i < sizeof(pcbEntry) / sizeof(pcbEntry[0]); ++i) // Assuming a maximum of 10 PCB entries
-    {
-        if (pcbEntry[i].processId != -1)
-        {
-            cout << "Process ID: " << pcbEntry[i].processId << endl;
-            cout << "Parent Process ID: " << pcbEntry[i].parentProcessId << endl;
-            cout << "Program Counter: " << pcbEntry[i].programCounter << endl;
-            cout << "Value: " << pcbEntry[i].value << endl;
-            cout << "Priority: " << pcbEntry[i].priority << endl;
-            cout << "State: ";
-            switch (pcbEntry[i].state)
-            {
-            case STATE_READY:
-                cout << "READY" << endl;
-                break;
-            case STATE_RUNNING:
-                cout << "RUNNING" << endl;
-                break;
-            case STATE_BLOCKED:
-                cout << "BLOCKED" << endl;
-                break;
-            default:
-                cout << "UNKNOWN" << endl;
-                break;
-            }
-            cout << "Start Time: " << pcbEntry[i].startTime << endl;
-            cout << "Time Used: " << pcbEntry[i].timeUsed << endl;
-            cout << "--------------------------------------\n";
-        }
-    }
+    cout << "Print command is not implemented until iLab 3" << endl;
 }
 
 // Function that implements the process manager.
 int runProcessManager(int fileDescriptor)
 {
-    vector<PcbEntry> pcbTable;
+    // vector<PcbEntry> pcbTable;
     //  Attempt to create the init process.
     if (!createProgram("init", pcbEntry[0].program))
     {
@@ -370,7 +357,6 @@ int runProcessManager(int fileDescriptor)
             break;
         case 'P':
             cout << "You entered P" << endl;
-            print();
             break;
         default:
             cout << "You entered an invalid character!" << endl;
@@ -387,16 +373,13 @@ int main(int argc, char *argv[])
     int result;
     // TODO: Create a pipe
     pipe(pipeDescriptors);
-    // USE fork() SYSTEM CALL to create the child process and save the value returned in processMgrPid variable if ((processMgrPid = fork()) == -1) exit(1); /* FORK FAILED */
-    if ((processMgrPid = fork()) == -1) {
-        exit(1);
-    }
-
+    // USE fork() SYSTEM CALL to create the child process and save the
+    value returned in processMgrPid variable if ((processMgrPid = fork()) == -1) exit(1); /* FORK FAILED */
     if (processMgrPid == 0)
     {
         // The process manager process is running.
         // Close the unused write end of the pipe for the process manager
-        close(pipeDescriptors[1]);
+        process.close(pipeDescriptors[1]);
         // Run the process manager.
         result = runProcessManager(pipeDescriptors[0]);
         // Close the read end of the pipe for the process manager process (for cleanup purposes).
@@ -414,7 +397,6 @@ int main(int argc, char *argv[])
             cout << "Enter Q, P, U or T" << endl;
             cout << "$ ";
             cin >> ch;
-
             // Pass commands to the process manager process via the pipe.
             if (write(pipeDescriptors[1], &ch, sizeof(ch)) != sizeof(ch))
             {
