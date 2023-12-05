@@ -99,37 +99,38 @@ bool createProgram(const string &filename, vector<Instruction> &program)
             stringstream argStream(instruction.stringArg);
             switch (instruction.operation)
             {
-            case 'S': // Integer argument.
-            case 'A': // Integer argument.
-            case 'D': // Integer argument.
-            case 'F': // Integer argument.
-                if (!(argStream >> instruction.intArg))
-                {
-                    cout << filename << ":" << lineNum
-                         << " - Invalid integer argument "
-                         << instruction.stringArg << " for "
-                         << instruction.operation << " operation"
-                         << endl;
+                case 'S': // Integer argument.
+                case 'A': // Integer argument.
+                case 'D': // Integer argument.
+                case 'F': // Integer argument.
+                    if (!(argStream >> instruction.intArg))
+                    {
+                        cout << filename << ":" << lineNum
+                            << " - Invalid integer argument "
+                            << instruction.stringArg << " for "
+                            << instruction.operation << " operation"
+                            << endl;
+                        file.close();
+                        return false;
+                    }
+                    break;
+                case 'B': // No argument.
+                case 'E': // No argument.
+                    break;
+                case 'R': // String argument.
+                    // Note that since the string is trimmed on both ends, filenames
+                    // with leading or trailing whitespace (unlikely) will not work.
+                    if (instruction.stringArg.size() == 0)
+                    {
+                        cout << filename << ":" << lineNum << " - Missing string argument " << endl;
+                        file.close();
+                        return false;
+                    }
+                    break;
+                default:
+                    cout << filename << ":" << lineNum << " - Invalid operation, " << instruction.operation << endl;
                     file.close();
                     return false;
-                }
-                break;
-            case 'B': // No argument.
-            case 'E': // No argument.
-                break;
-            case 'R': // String argument.
-                        // Note that since the string is trimmed on both ends, filenames
-                        // with leading or trailing whitespace (unlikely) will not work.if (instruction.stringArg.size() == 0)
-                {
-                    cout << filename << ":" << lineNum << " - Missing string argument " << endl;
-                    file.close();
-                    return false;
-                }
-                break;
-            default:
-                cout << filename << ":" << lineNum << " - Invalid operation, " << instruction.operation << endl;
-                file.close();
-                return false;
             }
             program.push_back(instruction);
         }
@@ -287,7 +288,39 @@ void unblock()
 // Implements the P command.
 void print()
 {
-    cout << "Print command is not implemented until iLab 3" << endl;
+    cout << "****************************************************************" << endl;
+    cout << "The current system state is as follows:" << endl;
+    cout << "****************************************************************" << endl;
+    for (int i = 0; i < sizeof(pcbEntry) / sizeof(pcbEntry[0]); ++i) // Assuming a maximum of 10 PCB entries
+    {
+        if (pcbEntry[i].processId != -1)
+        {
+            cout << "Process ID: " << pcbEntry[i].processId << endl;
+            cout << "Parent Process ID: " << pcbEntry[i].parentProcessId << endl;
+            cout << "Program Counter: " << pcbEntry[i].programCounter << endl;
+            cout << "Value: " << pcbEntry[i].value << endl;
+            cout << "Priority: " << pcbEntry[i].priority << endl;
+            cout << "State: ";
+            switch (pcbEntry[i].state)
+            {
+            case STATE_READY:
+                cout << "READY" << endl;
+                break;
+            case STATE_RUNNING:
+                cout << "RUNNING" << endl;
+                break;
+            case STATE_BLOCKED:
+                cout << "BLOCKED" << endl;
+                break;
+            default:
+                cout << "UNKNOWN" << endl;
+                break;
+            }
+            cout << "Start Time: " << pcbEntry[i].startTime << endl;
+            cout << "Time Used: " << pcbEntry[i].timeUsed << endl;
+            cout << "--------------------------------------\n";
+        }
+    }
 }
 
 // Function that implements the process manager.
@@ -334,6 +367,7 @@ int runProcessManager(int fileDescriptor)
             break;
         case 'P':
             cout << "You entered P" << endl;
+            print();
             break;
         default:
             cout << "You entered an invalid character!" << endl;
