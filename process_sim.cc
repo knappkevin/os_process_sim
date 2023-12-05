@@ -145,6 +145,7 @@ void set(int value)
 {
     // TODO: Implement
     // 1. Set the CPU value to the passed-in value.
+    cpu.value = value;
 }
 
 // Implements the A operation.
@@ -152,6 +153,7 @@ void add(int value)
 {
     // TODO: Implement
     // 1. Add the passed-in value to the CPU value.
+    cpu.value = cpu.value+value;
 }
 
 // Implements the D operation.
@@ -159,6 +161,7 @@ void decrement(int value)
 {
     // TODO: Implement
     // 1. Subtract the integer value from the CPU value.
+    cpu.value = cpu.value-value;
 }
 
 // Performs scheduling.
