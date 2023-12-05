@@ -90,12 +90,12 @@ bool createProgram(const string &filename, vector<Instruction> &program)
     {
         string line;
         getline(file, line);
-        trim(line);
+        line = trim(line);
         if (line.size() > 0)
         {
             Instruction instruction;
             instruction.operation = toupper(line[0]);
-            instruction.stringArg = trim(line.erase(0, 1));
+            if (line.size() > 1) instruction.stringArg = trim(line.erase(0, 1));
             stringstream argStream(instruction.stringArg);
             switch (instruction.operation)
             {
@@ -144,7 +144,7 @@ bool createProgram(const string &filename, vector<Instruction> &program)
 void set(int value)
 {
     // TODO: Implement
-    // 1. Set the CPU value to the passed-in value.
+    cpu.value = value;
 }
 
 // Implements the A operation.
@@ -152,6 +152,7 @@ void add(int value)
 {
     // TODO: Implement
     // 1. Add the passed-in value to the CPU value.
+    cpu.value += value;
 }
 
 // Implements the D operation.
@@ -159,6 +160,7 @@ void decrement(int value)
 {
     // TODO: Implement
     // 1. Subtract the integer value from the CPU value.
+    cpu.value -= value;
 }
 
 // Performs scheduling.
@@ -228,7 +230,7 @@ void replace(string &argument)
 void quantum()
 {
     Instruction instruction;
-    cout << "In quantum";
+    cout << "In quantum: ";
     if (runningState == -1)
     {
         cout << "No processes are running" << endl;
@@ -242,7 +244,7 @@ void quantum()
     }
     else
     {
-        cout << "End of program reached without E operation" << endl;
+        cout << "End of program reached" << endl;
         instruction.operation = 'E';
     }
     switch (instruction.operation)
@@ -257,18 +259,23 @@ void quantum()
         break;
     case 'D':
         decrement(instruction.intArg);
+        cout << "instruction D " << instruction.intArg << endl;
         break;
     case 'B':
         block();
+        cout << "instruction B" << endl;
         break;
     case 'E':
         end();
+        cout << "instruction E" << endl;
         break;
     case 'F':
         fork(instruction.intArg);
+        cout << "instruction F" << endl;
         break;
     case 'R':
         replace(instruction.stringArg);
+        cout << "instruction R" << endl;
         break;
     }
     ++timestamp;
@@ -321,6 +328,13 @@ void print()
             cout << "--------------------------------------\n";
         }
     }
+
+    // Print CPU state
+    cout << "CPU State:" << endl;
+    cout << "-Program Counter: " << cpu.programCounter << endl;
+    cout << "-Value: " << cpu.value << endl;
+    cout << "-Time Slice: " << cpu.timeSlice << endl;
+    cout << "-Time Slice Used: " << cpu.timeSliceUsed << endl;
 }
 
 // Function that implements the process manager.
@@ -366,9 +380,25 @@ int runProcessManager(int fileDescriptor)
             cout << "You entered U" << endl;
             break;
         case 'P':
-            cout << "You entered P" << endl;
-            print();
+            pid_t reporterPid;
+            if ((reporterPid = fork()) == -1)
+            {
+                cerr << "Error creating reporter process" << endl;
+                break;
+            }
+            if (reporterPid == 0)
+            {
+                // This is the child process (reporter)
+                print();
+            }
+            else
+            {
+                // This is the parent process (original process manager)
+                wait(NULL); // Wait for the reporter process to finish
+            }
             break;
+        case 'T':
+            cout << "You entered T, exiting" << endl;
         default:
             cout << "You entered an invalid character!" << endl;
         }
