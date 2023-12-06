@@ -508,6 +508,7 @@ int runProcessManager(int fileDescriptor)
             {
                 // This is the child process (reporter)
                 print();
+                _exit(3);
             }
             else
             {
