@@ -52,6 +52,7 @@ public:
     State state;
     unsigned int startTime;
     unsigned int timeUsed;
+    unsigned int timeFinished;
 };
 
 PcbEntry PcbTable[10];
@@ -235,6 +236,7 @@ void end()
     }
     PcbEntry &runningProcess = PcbTable[runningState];
     PcbTable[runningState].state = STATE_TERMINATED;
+    PcbTable[runningState].timeFinished = timestamp + 1;    
 
     // 2. Update the cumulative time difference.
     cumulativeTimeDiff += timestamp + 1 - runningProcess.startTime;
@@ -280,6 +282,7 @@ void fork(int value)
     // 6. Increment the cpu's program counter by the value read in #3
     cpu.programCounter += value;
     
+    newProcess.timeUsed = 0;
     newProcess.program = *cpu.pProgram;
 
     //add the new process to the PcbTable
@@ -322,6 +325,7 @@ void quantum()
     {
         instruction = (*cpu.pProgram)[cpu.programCounter];
         ++cpu.programCounter;
+        ++PcbTable[runningState].timeUsed;
     }
     else
     {
@@ -418,16 +422,25 @@ void print()
             }
             cout << "Start Time: " << PcbTable[i].startTime << endl;
             cout << "Time Used: " << PcbTable[i].timeUsed << endl;
+            if (PcbTable[i].state == STATE_TERMINATED)
+            {
+                cout << "Time Finished: " << PcbTable[i].timeFinished << endl;
+            }
             cout << "--------------------------------------\n";
         }
     }
 
     // Print CPU state
+    cout << "****************************************************************" << endl;
     cout << "CPU State:" << endl;
     cout << "-Program Counter: " << cpu.programCounter << endl;
     cout << "-Value: " << cpu.value << endl;
     cout << "-Time Slice: " << cpu.timeSlice << endl;
     cout << "-Time Slice Used: " << cpu.timeSliceUsed << endl;
+
+    cout << "Timestamp: " << timestamp << endl;
+    cout << "****************************************************************" << endl;
+
 }
 
 void calcAvgTurnaroundTime()
@@ -438,7 +451,7 @@ void calcAvgTurnaroundTime()
     {
         if (PcbTable[i].state == STATE_TERMINATED)
         {
-            double turnaroundTime = PcbTable[i].timeUsed - PcbTable[i].startTime;
+            double turnaroundTime = PcbTable[i].timeFinished - PcbTable[i].startTime;
             totalTurnaroundTime += turnaroundTime;
         }
     }
@@ -492,6 +505,10 @@ int runProcessManager(int fileDescriptor)
         {
         case 'Q':
             quantum();
+            if (runningState != -1) {
+                PcbTable[runningState].programCounter = cpu.programCounter;
+                PcbTable[runningState].value = cpu.value;
+            }
             break;
         case 'U':
             cout << "You entered U" << endl;
@@ -522,12 +539,6 @@ int runProcessManager(int fileDescriptor)
             break;
         default:
             cout << "You entered an invalid character!" << endl;
-        }
-        
-        if (runningState != -1) {
-            PcbTable[runningState].programCounter = cpu.programCounter;
-            PcbTable[runningState].value = cpu.value;
-            ++PcbTable[runningState].timeUsed;
         }
 
     } while (ch != 'T');
